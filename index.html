@@ -37,7 +37,7 @@
     .single-upload:hover { border-color: #3b82f6; }
     .single-upload input { display: none; }
     .single-upload img { width: 100%; display: block; }
-    .single-upload .placeholder { text-align: center; color: #2a2a4a; }
+    .single-upload .placeholder { text-align: center; color: #2a2a4a; padding: 20px; }
     .single-upload .placeholder .uicon { font-size: 28px; margin-bottom: 6px; }
     .single-upload .placeholder .utxt { font-size: 12px; }
     .color-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -55,14 +55,13 @@
 </head>
 <body>
 
-  
 <div class="header">
   <h1>🎨 EDITOR POSTING</h1>
   <p>LUUNASTORE • Collage & Auto Template</p>
 </div>
 
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('collage',this)">🖼️ Collage 1:1</div>
+  <div class="tab active" onclick="switchTab('collage',this)">🖼️ Collage Grid</div>
   <div class="tab" onclick="switchTab('template',this)">✨ Auto Template</div>
 </div>
 
@@ -73,9 +72,9 @@
     <div class="upload-zone" onclick="document.getElementById('collage-input').click()">
       <input type="file" id="collage-input" accept="image/*" multiple onchange="addCollageImages(event)"/>
       <div class="uicon">📁</div>
-      <div class="utxt">Tap untuk upload foto<br><span>Bisa pilih banyak sekaligus</span></div>
+      <div class="utxt">Tap untuk upload foto<br><span>Bisa pilih banyak sekaligus (max 12)</span></div>
     </div>
-    <p class="hint">Mendukung 1–6 foto. Susunan otomatis menyesuaikan jumlah.</p>
+    <p class="hint">Grid otomatis: 1→1x1 | 2→2x1 | 3-4→2x2 | 5-6→3x2 | 7-9→3x3 | 10-12→4x3</p>
     <div id="collage-preview" class="preview-grid" style="display:none;"></div>
 
     <div class="field" style="margin-top:16px;">
@@ -198,16 +197,24 @@
 
   function addCollageImages(e) {
     var files = Array.from(e.target.files);
-    collageFiles = collageFiles.concat(files).slice(0, 6);
+    collageFiles = collageFiles.concat(files).slice(0, 12);
     renderCollagePreview();
     e.target.value = '';
+  }
+
+  function getGridCols(n) {
+    if (n <= 1) return 1;
+    if (n <= 2) return 2;
+    if (n <= 4) return 2;
+    if (n <= 6) return 3;
+    if (n <= 9) return 3;
+    return 4;
   }
 
   function renderCollagePreview() {
     var grid = document.getElementById('collage-preview');
     if (!collageFiles.length) { grid.style.display = 'none'; return; }
-    var n = collageFiles.length;
-    var cols = n <= 3 ? n : (n === 4 ? 2 : 3);
+    var cols = getGridCols(collageFiles.length);
     grid.style.display = 'grid';
     grid.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
     grid.innerHTML = '';
@@ -240,44 +247,40 @@
     if (!collageFiles.length) { showToast('Upload foto dulu!'); return; }
     showToast('Generating...');
     Promise.all(collageFiles.map(function(f){ return loadImg(f); })).then(function(imgs) {
-      var SIZE = 1080;
       var n = imgs.length;
+      var cols = getGridCols(n);
+      var rows = Math.ceil(n / cols);
+      var CELL = 360;
+      var g = gapSize;
+      var W = cols * CELL + (cols + 1) * g;
+      var H = rows * CELL + (rows + 1) * g;
+
       var canvas = document.getElementById('collage-canvas');
-      canvas.width = SIZE; canvas.height = SIZE;
+      canvas.width = W; canvas.height = H;
       var ctx = canvas.getContext('2d');
 
       ctx.fillStyle = bgColor;
-      ctx.fillRect(0, 0, SIZE, SIZE);
-
-      var g = gapSize;
-      var layout = [];
-      if (n === 1) layout = [[0,0,1,1]];
-      else if (n === 2) layout = [[0,0,0.5,1],[0.5,0,0.5,1]];
-      else if (n === 3) layout = [[0,0,1/3,1],[1/3,0,1/3,1],[2/3,0,1/3,1]];
-      else if (n === 4) layout = [[0,0,0.5,0.5],[0.5,0,0.5,0.5],[0,0.5,0.5,0.5],[0.5,0.5,0.5,0.5]];
-      else if (n === 5) layout = [[0,0,1/3,0.5],[1/3,0,1/3,0.5],[2/3,0,1/3,0.5],[0,0.5,0.5,0.5],[0.5,0.5,0.5,0.5]];
-      else layout = [[0,0,1/3,0.5],[1/3,0,1/3,0.5],[2/3,0,1/3,0.5],[0,0.5,1/3,0.5],[1/3,0.5,1/3,0.5],[2/3,0.5,1/3,0.5]];
+      ctx.fillRect(0, 0, W, H);
 
       imgs.forEach(function(img, i) {
-        var l = layout[i];
-        var x = l[0]*SIZE + g/2;
-        var y = l[1]*SIZE + g/2;
-        var w = l[2]*SIZE - g;
-        var h = l[3]*SIZE - g;
-        var scale = Math.max(w/img.width, h/img.height);
-        var sw = img.width*scale;
-        var sh = img.height*scale;
-        var ox = (sw-w)/2;
-        var oy = (sh-h)/2;
+        var col = i % cols;
+        var row = Math.floor(i / cols);
+        var x = g + col * (CELL + g);
+        var y = g + row * (CELL + g);
+        var scale = Math.max(CELL / img.width, CELL / img.height);
+        var sw = img.width * scale;
+        var sh = img.height * scale;
+        var ox = (sw - CELL) / 2;
+        var oy = (sh - CELL) / 2;
         ctx.save();
-        ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
-        ctx.drawImage(img, x-ox, y-oy, sw, sh);
+        ctx.beginPath(); ctx.rect(x, y, CELL, CELL); ctx.clip();
+        ctx.drawImage(img, x - ox, y - oy, sw, sh);
         ctx.restore();
       });
 
       canvas.style.display = 'block';
       document.getElementById('dl-collage').style.display = 'block';
-      showToast('Collage siap!');
+      showToast('Collage siap! Tap download.');
     });
   }
 
@@ -297,17 +300,29 @@
     el.classList.add('selected');
   }
 
+  function drawWave(ctx, x, y, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    for (var i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + i * 18);
+      ctx.bezierCurveTo(x + 20, y - 10 + i * 18, x + 40, y + 20 + i * 18, x + 60, y + i * 18);
+      ctx.stroke();
+    }
+  }
+
   function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
-    ctx.moveTo(x+r, y);
-    ctx.lineTo(x+w-r, y);
-    ctx.quadraticCurveTo(x+w,y,x+w,y+r);
-    ctx.lineTo(x+w,y+h-r);
-    ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-    ctx.lineTo(x+r,y+h);
-    ctx.quadraticCurveTo(x,y+h,x,y+h-r);
-    ctx.lineTo(x,y+r);
-    ctx.quadraticCurveTo(x,y,x+r,y);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
   }
 
@@ -327,84 +342,134 @@
     canvas.width = SIZE; canvas.height = SIZE;
     var ctx = canvas.getContext('2d');
 
-    // BG gradient
-    var grad = ctx.createLinearGradient(0,0,SIZE,SIZE);
-    grad.addColorStop(0,'#3a6fcf');
-    grad.addColorStop(0.5,'#4b82d8');
-    grad.addColorStop(1,'#2855a8');
+    // BG gradient biru seperti referensi
+    var grad = ctx.createLinearGradient(0, 0, SIZE, SIZE);
+    grad.addColorStop(0, '#5b8dd9');
+    grad.addColorStop(0.5, '#4a7fc1');
+    grad.addColorStop(1, '#3a6ab0');
     ctx.fillStyle = grad;
-    ctx.fillRect(0,0,SIZE,SIZE);
+    ctx.fillRect(0, 0, SIZE, SIZE);
 
-    // Decorative circles
-    ctx.globalAlpha = 0.10;
-    ctx.fillStyle = '#fff';
-    var circles = [[0,300,200],[SIZE,280,200],[120,SIZE-100,160],[SIZE-100,SIZE-80,180]];
-    circles.forEach(function(c){
-      ctx.beginPath(); ctx.arc(c[0],c[1],c[2],0,Math.PI*2); ctx.fill();
-    });
+    // Diagonal stripe dekorasi kiri atas
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = '#8ab4e8';
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(300, 0); ctx.lineTo(0, 300);
+    ctx.closePath(); ctx.fill();
     ctx.globalAlpha = 1;
 
-    // Header
-    var HEADER_H = 200;
-    var PHOTO_H  = 620;
+    // Dekorasi gelombang ~~~ pojok kanan atas
+    drawWave(ctx, SIZE - 160, 40, 'rgba(255,255,255,0.6)');
+    // Dekorasi gelombang ~~~ pojok kiri bawah
+    drawWave(ctx, 40, SIZE - 120, 'rgba(255,255,255,0.6)');
 
+    // Bintang dekorasi
+    var stars = [[SIZE-60,160],[SIZE-90,200],[SIZE-40,210],[80,SIZE-160],[50,SIZE-190],[90,SIZE-180]];
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    stars.forEach(function(s) {
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    // Plus dekorasi
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 3;
+    [[SIZE-30,240],[60,SIZE-220]].forEach(function(p) {
+      ctx.beginPath(); ctx.moveTo(p[0]-8,p[1]); ctx.lineTo(p[0]+8,p[1]); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p[0],p[1]-8); ctx.lineTo(p[0],p[1]+8); ctx.stroke();
+    });
+
+    // Header teks
+    var HEADER_H = 220;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 72px Arial';
-    ctx.fillText(store, SIZE/2, 110);
-    ctx.font = 'bold 36px Arial';
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText(tagline, SIZE/2, 168);
+    ctx.font = 'bold 82px Arial';
+    ctx.fillText(store, SIZE / 2, 110);
+    ctx.font = 'bold 44px Arial';
+    ctx.fillText(tagline, SIZE / 2, 178);
 
-    // Photo
+    // Foto akun - ambil area besar
+    var PHOTO_Y = HEADER_H;
+    var PHOTO_H = 580;
     var img = tmplImgObj;
-    var scale = Math.max(SIZE/img.width, PHOTO_H/img.height);
-    var sw = img.width*scale;
-    var sh = img.height*scale;
-    var ox = (sw-SIZE)/2;
-    var oy = (sh-PHOTO_H)/2;
+
+    // Rounded rect clip untuk foto
     ctx.save();
-    ctx.beginPath(); ctx.rect(0,HEADER_H,SIZE,PHOTO_H); ctx.clip();
-    ctx.drawImage(img, -ox, HEADER_H-oy, sw, sh);
+    roundRect(ctx, 20, PHOTO_Y, SIZE - 40, PHOTO_H, 16);
+    ctx.clip();
+    var scale = Math.max((SIZE - 40) / img.width, PHOTO_H / img.height);
+    var sw = img.width * scale;
+    var sh = img.height * scale;
+    var ox = (sw - (SIZE - 40)) / 2;
+    var oy = (sh - PHOTO_H) / 2;
+    ctx.drawImage(img, 20 - ox, PHOTO_Y - oy, sw, sh);
     ctx.restore();
 
-    // Harga box
-    var BOX_W = 520; var BOX_H = 160;
-    var BOX_X = (SIZE-BOX_W)/2;
-    var BOX_Y = HEADER_H + PHOTO_H - 20;
+    // Kotak harga dengan border gradient ungu-pink
+    var BOX_W = 480; var BOX_H = 140;
+    var BOX_X = (SIZE - BOX_W) / 2;
+    var BOX_Y = PHOTO_Y + PHOTO_H + 20;
 
-    ctx.shadowColor = '#c084fc'; ctx.shadowBlur = 30;
-    ctx.fillStyle = 'rgba(15,5,40,0.80)';
-    roundRect(ctx,BOX_X,BOX_Y,BOX_W,BOX_H,16); ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 4;
-    roundRect(ctx,BOX_X,BOX_Y,BOX_W,BOX_H,16); ctx.stroke();
+    // Background kotak transparan gelap
+    ctx.fillStyle = 'rgba(10,5,30,0.55)';
+    roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, 14);
+    ctx.fill();
 
+    // Border gradient ungu-pink
+    var borderGrad = ctx.createLinearGradient(BOX_X, BOX_Y, BOX_X + BOX_W, BOX_Y + BOX_H);
+    borderGrad.addColorStop(0, '#c084fc');
+    borderGrad.addColorStop(1, '#f472b6');
+    ctx.strokeStyle = borderGrad;
+    ctx.lineWidth = 5;
+    roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, 14);
+    ctx.stroke();
+
+    // Teks harga
     ctx.fillStyle = hargaColor;
-    ctx.font = 'bold 100px Arial';
+    ctx.font = 'bold 96px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(harga, SIZE/2, BOX_Y+BOX_H-36);
+    ctx.fillText(harga, SIZE / 2, BOX_Y + BOX_H - 32);
 
     // Footer
-    var FY = BOX_Y + BOX_H + 28;
+    var FY = BOX_Y + BOX_H + 30;
 
-    // WA circle
-    ctx.beginPath(); ctx.arc(100,FY+30,28,0,Math.PI*2);
+    // WA - lingkaran hijau
+    ctx.beginPath();
+    ctx.arc(90, FY + 28, 34, 0, Math.PI * 2);
     ctx.fillStyle = '#25D366'; ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center';
-    ctx.fillText('WA',100,FY+38);
-    ctx.font = 'bold 36px Arial'; ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
-    ctx.fillText(wa, 140, FY+44);
+    // WA icon sederhana
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 26px Arial'; ctx.textAlign = 'center';
+    ctx.fillText('WA', 90, FY + 36);
+    // WA nomor
+    ctx.font = 'bold 40px Arial'; ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+    ctx.fillText(wa, 138, FY + 42);
 
-    // IG circle
-    ctx.beginPath(); ctx.arc(SIZE-100,FY+30,28,0,Math.PI*2);
-    var igG = ctx.createLinearGradient(SIZE-128,FY+2,SIZE-72,FY+58);
-    igG.addColorStop(0,'#f58529'); igG.addColorStop(0.5,'#dd2a7b'); igG.addColorStop(1,'#8134af');
+    // IG - lingkaran gradient
+    ctx.beginPath();
+    ctx.arc(SIZE - 90, FY + 28, 34, 0, Math.PI * 2);
+    var igG = ctx.createRadialGradient(SIZE-90,FY+28,2,SIZE-90,FY+28,34);
+    igG.addColorStop(0, '#f58529');
+    igG.addColorStop(0.5, '#dd2a7b');
+    igG.addColorStop(1, '#8134af');
     ctx.fillStyle = igG; ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center';
-    ctx.fillText('IG',SIZE-100,FY+38);
-    ctx.font = 'bold 36px Arial'; ctx.fillStyle = '#fff'; ctx.textAlign = 'right';
-    ctx.fillText(ig, SIZE-140, FY+44);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 26px Arial'; ctx.textAlign = 'center';
+    ctx.fillText('IG', SIZE - 90, FY + 36);
+    // IG username
+    ctx.font = 'bold 40px Arial'; ctx.fillStyle = '#fff'; ctx.textAlign = 'right';
+    ctx.fillText(ig, SIZE - 138, FY + 42);
+
+    // Swipe button pojok kanan bawah
+    var SW_W = 220; var SW_H = 66;
+    var SW_X = SIZE - SW_W - 36;
+    var SW_Y = SIZE - SW_H - 36;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    roundRect(ctx, SW_X, SW_Y, SW_W, SW_H, 33);
+    ctx.fill();
+    ctx.fillStyle = '#1a2060';
+    ctx.font = 'bold 34px Arial'; ctx.textAlign = 'center';
+    ctx.fillText('Swipe  >', SW_X + SW_W / 2, SW_Y + 44);
 
     canvas.style.display = 'block';
     document.getElementById('dl-tmpl').style.display = 'block';
